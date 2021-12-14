@@ -32,7 +32,7 @@ model:any={}
   logout()
   {
     this.account.logout();
-    this.route.navigateByUrl('/')
+    this.route.navigateByUrl('/');
     // this.loggedin=false;
   }
   // getCurrentUser()

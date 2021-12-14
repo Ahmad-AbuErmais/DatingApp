@@ -7,7 +7,7 @@ namespace API.DTO
     {
         
         public int Id { get; set; }
-        public string Username { get; set; }   
+        public string Username  { get; set; }   
         public string PhotoUrl { get; set; }  
         public string Age { get; set; }
         public string  knownAs { get; set; }

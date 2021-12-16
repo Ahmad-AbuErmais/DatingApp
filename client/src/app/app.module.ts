@@ -23,6 +23,9 @@ import { JwtInterceptor } from './_interceptors/jwt.interceptor';
 import { EditMemberComponent } from './members/edit-member/edit-member.component';
 import { NgxSpinnerModule } from 'ngx-spinner';
 import { LoadingInterceptor } from './_interceptors/loading.interceptor';
+import { PhotoEditorComponent } from './members/photo-editor/photo-editor.component';
+import { FileUploadModule } from 'ng2-file-upload';
+
 
 
 
@@ -40,7 +43,8 @@ import { LoadingInterceptor } from './_interceptors/loading.interceptor';
     NotFoundComponent,
     ServerErrorComponent,
     MemberCardComponent,
-    EditMemberComponent
+    EditMemberComponent,
+    PhotoEditorComponent
   ],
   imports: [
     BrowserModule,
@@ -50,8 +54,8 @@ import { LoadingInterceptor } from './_interceptors/loading.interceptor';
     FormsModule,
     NgxGalleryModule,
     NgxSpinnerModule,
-    SharedModule
-
+    SharedModule,
+    FileUploadModule
 
   ],
   providers: [

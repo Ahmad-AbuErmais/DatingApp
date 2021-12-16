@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
@@ -45,7 +46,8 @@ namespace API.Controllers
         [HttpPost("login")]
         public async Task<ActionResult<DtoUser>> Login(DtoLogin dtoLogin)
         {
-            var user = await _context.Users.SingleOrDefaultAsync(x => x.UserName == dtoLogin.username);
+            var user = await _context.Users.
+            Include(x=>x.photos).SingleOrDefaultAsync(x => x.UserName == dtoLogin.username);
             if (user == null)
                 return Unauthorized("this username is not Authorized");
             using var hmac = new HMACSHA512(user.PasswordSalt);
@@ -58,7 +60,8 @@ namespace API.Controllers
                return new DtoUser
             {
                 Username = user.UserName,
-                Token =_token.CreateToken(user)
+                Token =_token.CreateToken(user),
+                PhotoUrl=user.photos.FirstOrDefault(x=>x.IsMain)?.Url
             };
 
         }

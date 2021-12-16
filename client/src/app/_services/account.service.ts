@@ -20,8 +20,8 @@ currentuser$=this.currentusersource.asObservable();
         const user=response;
         if(user)
         {
-          localStorage.setItem('user',JSON.stringify(user))
-          this.currentusersource.next(user);
+//
+          this.SetCurrentUser(user)
         }
       })
     );
@@ -34,14 +34,16 @@ currentuser$=this.currentusersource.asObservable();
       map((user:User)=>{
         if(user)
         {
-          localStorage.setItem('user',JSON.stringify(user))
-          this.currentusersource.next(user);
+          // localStorage.setItem('user',JSON.stringify(user))
+          // this.currentusersource.next(user);
+          this.SetCurrentUser(user);
         }
       })
     )
   }
   SetCurrentUser(user:User){
-    this.currentusersource.next(user)
+    localStorage.setItem('user',JSON.stringify(user))
+    this.currentusersource.next(user);
   }
   logout()
   {

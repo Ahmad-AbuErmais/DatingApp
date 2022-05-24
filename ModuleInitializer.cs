@@ -1,24 +1,24 @@
-﻿
-using EskaCMS.Core.Extensions;
-using EskaCMS.Core.Extentions.Settings;
-
-
-using EskaCMS.Infrastructure.Modules;
-using EskaCMS.Pages.Services;
-using EskaCMS.Pages.Services.Interfaces;
+﻿using EskaCommerce.Infrastructure.Modules;
+using System;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Hosting;
+using EskaCMS.Infrastructure.Modules;
 
+using EskaCMS.EmailSender.SMTP.Services;
+using EskaCMS.Infrastructure.Data;
+using EskaCommerce.Module.EmailSenderSmtp.Data;
 
-namespace EskaCMS.Pages
+namespace EskaCommerce.Module.EmailSenderSmtp
 {
     public class ModuleInitializer : IModuleInitializer
     {
-        public void ConfigureServices(IServiceCollection services)
+        public void ConfigureServices(IServiceCollection serviceCollection)
         {
-            services.AddTransient<IPages, PagesService>();
-         
+            serviceCollection.AddScoped<IEmailSender, EmailSender>();
+            serviceCollection.AddTransient<IEmailTemplateService, EmailTemplateService>();
+
+            serviceCollection.AddScoped<IDataSeeder, EmailSenderSeeder>();
         }
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)

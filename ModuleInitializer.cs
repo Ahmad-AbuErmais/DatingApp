@@ -1,28 +1,28 @@
-﻿using EskaCommerce.Infrastructure.Modules;
-using System;
+﻿using EskaCMS.Infrastructure.Modules;
+using EskaCMS.SignalR.Hubs;
+using EskaCMS.SignalR.RealTime;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Hosting;
-using EskaCMS.Infrastructure.Modules;
+using Microsoft.Extensions.DependencyInjection;
 
-using EskaCMS.EmailSender.SMTP.Services;
-using EskaCMS.Infrastructure.Data;
-using EskaCommerce.Module.EmailSenderSmtp.Data;
 
-namespace EskaCommerce.Module.EmailSenderSmtp
+namespace EskaCommerce.SignalR
 {
     public class ModuleInitializer : IModuleInitializer
     {
         public void ConfigureServices(IServiceCollection serviceCollection)
         {
-            serviceCollection.AddScoped<IEmailSender, EmailSender>();
-            serviceCollection.AddTransient<IEmailTemplateService, EmailTemplateService>();
-
-            serviceCollection.AddScoped<IDataSeeder, EmailSenderSeeder>();
+            serviceCollection.AddSignalR();
+            serviceCollection.AddSingleton<IOnlineClientManager, OnlineClientManager>();
         }
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
+
+            app.UseEndpoints(routes =>
+            {
+                routes.MapHub<CommonHub>("/locationStreamingSocket");
+            });
         }
     }
 }

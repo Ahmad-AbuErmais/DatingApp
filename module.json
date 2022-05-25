@@ -1,6 +1,6 @@
 {
-  "id": "EskaCMS.EmailSender.SMTP",
-  "name": "EmailSender SMTP",
+  "id": "EskaCMS.SignalR",
+  "name": "SignalR RealTime",
   "isBundledWithHost": true,
   "version": "1.0.0"
 }

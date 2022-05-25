@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace EskaCMS.EmailSender
+namespace EskaCommerce.SignalR
 {
     public class Class1
     {

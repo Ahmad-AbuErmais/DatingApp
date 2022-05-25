@@ -1,28 +1,24 @@
-﻿using EskaCMS.Infrastructure.Modules;
-using EskaCMS.SignalR.Hubs;
-using EskaCMS.SignalR.RealTime;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
+﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Hosting;
+using EskaCMS.Infrastructure.Modules;
+using EskaCMS.Core.Services;
+using EskaCMS.StorageLocal;
+using EskaCMS.Module.Core;
 
-
-namespace EskaCommerce.SignalR
+namespace EskaCMS.Module.StorageLocal
 {
     public class ModuleInitializer : IModuleInitializer
     {
         public void ConfigureServices(IServiceCollection serviceCollection)
         {
-            serviceCollection.AddSignalR();
-            serviceCollection.AddSingleton<IOnlineClientManager, OnlineClientManager>();
+            //serviceCollection.AddSingleton<IStorageService, LocalStorageService>();
+         
         }
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
-
-            app.UseEndpoints(routes =>
-            {
-                routes.MapHub<CommonHub>("/locationStreamingSocket");
-            });
+            
         }
     }
 }

@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace EskaCommerce.SignalR
+namespace EskaCMS.LocalStorage
 {
     public class Class1
     {

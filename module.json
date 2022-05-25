@@ -1,6 +1,6 @@
 {
-  "id": "EskaCMS.SignalR",
-  "name": "SignalR RealTime",
+  "id": "EskaCMS.Filetorage",
+  "name": "FileStorage",
   "isBundledWithHost": true,
   "version": "1.0.0"
 }

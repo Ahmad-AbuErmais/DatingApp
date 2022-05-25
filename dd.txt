@@ -1,0 +1,55 @@
+
+
+                    Menu? ParentMenu = await _MenuRepository.Query().Where(m => m.Id == MenuId).FirstOrDefaultAsync();
+
+
+
+
+                    var MenuTree = ParentMenu != null? await _MenuService.GetMenusByGroupId(ParentMenu.MenuGroupId) : new List<MenuViewModel>() ;
+
+                    var TargetMenuTree = MenuId.HasValue ?  await SearchForMenu(MenuId.Value, MenuTree) : null ;
+
+                  
+
+                    List<long> MenusIds = await FillMenusIds(TargetMenuTree, new List<long>());
+                    // to be contenuid
+
+                    var reports = await _reportRepository
+                                            .Query()
+                                            .Where(x => (MenusIds.Count == 0 || MenusIds.Contains(x.MenuId) ) && 
+                                                         x.Status != EStatus.Deleted)
+                                            .Select(x => x.Id)
+                                            .ToListAsync();
+
+                    if (reports != null && reports.Count != 0)
+                    {
+                        return await _reportDetailsRepository.Query()
+                            .Include(p => p.Post)
+                            .ThenInclude(m => m.Thumbnail)
+                            .Where(x => reports.Contains(x.ReportId) && x.Status != EStatus.Deleted)
+                          .Select(x => new ReportMenuListVM()
+                          {
+                              Title = x.Post.Title,
+                              ShortDescription = x.Post.ShortDescription,
+                              Description = x.Post.Description,
+                              Thumbnail = x.Post.Thumbnail.PublicUrl,
+                              Slug = x.Post.Slug,
+                              TemplateId = x.Post.PostTemplateId
+                          })
+                          .ToListAsync();
+                    }
+                    else
+                    {
+                        return new List<ReportMenuListVM>();
+                    }
+               
+            }
+            catch (Exception ex)
+            {
+
+                throw ex;
+            }
+
+
+
+Some COde

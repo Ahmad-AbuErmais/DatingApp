@@ -1,0 +1,194 @@
+public async Task<bool> UpdatePagesStatus(string PagesIds, int Status, long UserId, long SiteId)
+        {
+            try
+            {
+                int[] ids = PagesIds.Split(',').Select(n => Convert.ToInt32(n)).ToArray();
+                var pageList = await _pageRepository.Query().Where(x => x.Status != EStatus.Deleted
+                        && x.SiteId == SiteId).Select(x =>x).ToListAsync();
+
+                for (int i = 0; i < pageList.Count(); i++)
+                {
+                    for (int j = 0; j < ids.Count(); j++)
+                    {
+                        if (ids[j] == pageList[i].Id)
+                        {
+                            pageList[i].Status = (EStatus)Status;
+                            pageList[i].ModifiedById = UserId;
+                            if(Status ==(long) EStatus.Deleted)
+                            {
+                                pageList[i].Slug = pageList[i].Id + "Deleted" + pageList[i].Slug;
+                            }
+                            else
+                            {
+                                pageList[i].Slug = pageList[i].Slug.Split("Deleted").LastOrDefault();
+                            }
+                            await _pageRepository.SaveChangesAsync();
+                        }
+                    }
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+}
+
+
+{
+  "Logging": {
+    "IncludeScopes": false,
+    "LogLevel": {
+      "Default": "Warning"
+    }
+  },
+  "ConnectionStrings": {
+
+    "DefaultConnection": "server=192.168.2.20;port=3306;user=root;password=root;database=temp-eska-report"
+
+  },
+  "HangFireIncluded": false,
+  "Authentication": {
+    "Facebook": {
+      "AppId": "1716532045292977",
+      "AppSecret": "dfece01ae919b7b8af23f962a1f87f95"
+    },
+    "Google": {
+      "ClientId": "583825788849-8g42lum4trd5g3319go0iqt6pn30gqlq.apps.googleusercontent.com",
+      "ClientSecret": "X8xIiuNEUjEYfiEfiNrWOfI4"
+    },
+    "Jwt": {
+      "Key": "veryVerySecretKey",
+      "Issuer": "localhost",
+      "AccessTokenDurationInMinutes": 10000
+    }
+  },
+  "ActiveDirectory": {
+    "ActiveDirectoryUrl": "http://eskaintranet:2021/"
+  },
+  "EskaCore": {
+    "BaseApiUrl": "http://192.168.2.20/CoreApplications/Oracle/832/netcoreapi/",
+    "DefaultUserName": "Admin",
+    "DefaultPassword": "Eska@1234"
+  },
+  "CMSConfig": {
+    "BuilderDestination": "D:\\tfs-workspace\\DCMS-system\\builder\\src\\assets\\bundels",
+    "WebDestination": "D:\\tfs-workspace\\DCMS-system\\web-components\\src\\assets\\bundels"
+    //"BuilderDestination": "C:\\inetpub\\wwwroot\\DCMS-builder\\assets\\bundels",
+    //"WebDestination": "C:\\inetpub\\wwwroot\\DCMS-client\\assets\\bundels"
+  },
+  "AllowedHosts": "*",
+  "SmtpServer": "send.one.com",
+  "SmtpUsername": "system@tolpagorni.com",
+  "SmtpPassword": "S!st!m34#NEW!",
+  "SmtpPort": 587,
+  "RequiresAuthentication": true,
+  "Global": {
+    "CurrencyCulture": ""
+  },
+  "Serilog": {
+    "MinimumLevel": {
+      "Default": "Warning"
+    },
+    "WriteTo": [
+      {
+        "Name": "RollingFile",
+        "Args": {
+          "pathFormat": "logs\\log-{Date}.txt",
+          "outputTemplate": "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level}] [{SourceContext}] [{EventId}] {Message}{NewLine}{Exception}"
+        }
+      }
+    ],
+    "Enrich": [ "FromLogContext", "WithMachineName", "WithThreadId" ]
+  },
+  "Kestrel": {
+    "EndPoints": {
+      "Http1": {
+        "Url": "http://localhost:5000"
+      }
+      //"HttpsInlineCertFile": {
+      //  "Url": "https://localhost:5443"
+      //}
+    }
+  },
+  "CypherSecurity": {
+    "IS_ACTIVE": true,
+    "EXPIRATION_PERIOD_IN_DAYS": 10,
+    "SecuredApisList": [
+      "/Account",
+      "/ApiInvoker/Invoke",
+      "/ApiInvoker/InvokeWithFiles"
+      // don't put api/something
+    ],
+    "ExecludedApis": [
+      "pages/SavePageSettings",
+      "PageTemplate/SetTemplateCSS",
+      "Sites/SetSiteCSS",
+      "PageTemplate/SaveTemplatesSettings"
+
+    ],
+    "ApiWrapperExecludedApis": [
+    ],
+    "ExecludedHosts": [
+      "localhost:5000/swagger",
+      "localhost:5000"
+    ]
+
+  },
+  "ClientRateLimiting": {
+    "EnableEndpointRateLimiting": false,
+    "StackBlockedRequests": false,
+    "ClientIdHeader": "DCMS-ApiKey",
+    "HttpStatusCode": 429,
+    "EndpointWhitelist": [ "get:/api/license", "*:/api/status" ],
+    "ClientWhitelist": [ "DCMSWeb", "CP", "B8524FE6151c40B38E69F5Ac476646EC" ],
+    "GeneralRules": [
+      {
+        "Endpoint": "*",
+        "Period": "1s",
+        "Limit": 550
+      }
+    ],
+    "ClientRateLimitPolicies": {
+      "ClientRules": [
+        {
+          "ClientId": "client-id-1",
+          "Rules": [
+            {
+              "Endpoint": "*",
+              "Period": "1s",
+              "Limit": 10
+            },
+            {
+              "Endpoint": "*",
+              "Period": "15m",
+              "Limit": 200
+            }
+          ]
+        },
+        {
+          "Client": "client-id-2",
+          "Rules": [
+            {
+              "Endpoint": "*",
+              "Period": "1s",
+              "Limit": 5
+            },
+            {
+              "Endpoint": "*",
+              "Period": "15m",
+              "Limit": 150
+            },
+            {
+              "Endpoint": "*",
+              "Period": "12h",
+              "Limit": 500
+            }
+          ]
+        }
+      ]
+    }
+
+
+  }
+}

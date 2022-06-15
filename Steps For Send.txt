@@ -1,0 +1,702 @@
+ public async Task<UserGridOutputVM<UserViewModel>> GetList(UserSearchTableParam<UserListSearchVM> param,GeneralEnums.FillterType? fillterType)
+        {
+            UserListSearchVM search = param.Search;
+          
+            var UserQuery = await _userManager.Users
+                .AsNoTracking()
+                .Include(x => x.UserRoles)
+                .ThenInclude(x => x.Role)
+                .Include(x => x.CustomerGroups)
+                .ThenInclude(x => x.CustomerGroup)
+                .Where(user =>
+                (string.IsNullOrEmpty(search.Name) || (user.FullName.ToUpper().Contains(search.Name.ToUpper()) || user.UserName.ToUpper().Contains(search.Name.ToUpper())))
+                && ((search.GroupId == null || search.GroupId == 0) || user.CustomerGroups.Any(r => r.CustomerGroupId == search.GroupId))
+                && ((search.RoleId == null || search.RoleId == 0) || user.UserRoles.Any(r => r.RoleId == search.RoleId))
+                && (search.Status == null || search.Status == 0 || user.Status == search.Status)
+                 ).Select(x => new UserFilteVM
+                 { 
+                    
+                     CreatedById = x.CreatedById,
+                     FullName = x.FullName,
+                     CreationDate = x.CreationDate,
+                     ModifiedById = x.ModifiedById,
+                     ModificationDate = x.ModificationDate,
+                     UserRoles = x.UserRoles,
+                     CustomerGroups = x.CustomerGroups,
+                     UserSites = x.UserSites,
+                     CustomerGroupId = x.CustomerGroups.Select(x => x.CustomerGroupId).FirstOrDefault(),
+                     RoleId = x.UserRoles.Select(x => x.RoleId).FirstOrDefault(),
+                     UserName = x.UserName,
+                     Email=x.Email,
+                     UserId=x.Id,
+                     Status=x.Status,
+                     
+                    
+                 }).ToListAsync();
+             
+
+            var QueryWithOrder = new List<UserFilteVM>();
+            if (fillterType == FillterType.Name)
+            {
+               QueryWithOrder = UserQuery.OrderBy(x => x.FullName.ToLower()).ToList();
+            }
+            else if (fillterType == FillterType.UserRole)
+            {
+                QueryWithOrder = UserQuery.OrderBy(x => x.RoleId).ToList();
+            }
+            else if (fillterType == FillterType.Usergroup)
+            {
+                QueryWithOrder = UserQuery.OrderBy(x => x.CustomerGroupId).ToList();
+            }
+            else if (fillterType == null)
+            {
+                QueryWithOrder = UserQuery.OrderByDescending(x => x.CreationDate).ToList();
+
+            }
+            UserGridOutputVM<UserViewModel> User = new UserGridOutputVM<UserViewModel>
+            {
+                Items = QueryWithOrder.Select(p => new UserViewModel
+                {
+                   
+                    UserId = p.UserId,
+                    FullName = p.FullName,
+                    UserName = p.UserName,
+                    UserGroup = p.CustomerGroups.Where(x => x.UserId == p.UserId).Select(x => x.CustomerGroup.Name).ToList(),
+                    RoleName  =  p.UserRoles.Where(x => x.UserId == p.UserId).Select(x => x.Role.Name).ToList(),
+                    Status = p.Status,
+                    StatusDesc = Enum.GetName(typeof(EStatus), p.Status),
+                    LastLogin = p.LastLoginDate.HasValue ? (DateTimeOffset)p.LastLoginDate : null,
+                    Email = p.Email,
+                    RoleId=p.UserRoles.Where(x => x.UserId == p.UserId).Select(x => x.Role.Id).ToList(),
+                }).Skip(param.Pagination.Number * (param.Pagination.Start - 1)).Take(param.Pagination.Number)
+                   .OrderByDescending(x=>x.CreationDate).ToList(),
+                TotalRecord = UserQuery.Count
+                
+            };
+            
+
+            return User;
+        }
+--------------------------------------------------
+    public async Task <List<Theme>> GetThemesAsync(long SiteId)
+        {
+            try
+            {
+                var themes = await _ThemeRepository.Query()
+                                .Where(x => x.SiteId == SiteId && x.Status == EStatus.Published)
+                                .Include(i=>i.ImportedFiles)
+                                .ThenInclude(i=>i.Media.MediaDetails)
+                                .ToListAsync();
+
+                return themes;
+            }
+            catch (Exception exc)
+            {
+                throw exc;
+            }
+        }
+---------------------------------------------------------
+ public async Task<IActionResult> Send([FromBody] NotificationObject data)
+        {
+            try
+            {
+                long siteId = Convert.ToInt64(Request.Headers["SiteId"]);
+             
+                await _testNotifier.SendMessageAsync(
+                data.NotificationType,
+                data,
+                siteId
+                );
+                return Ok("Message has been sent");
+            }
+            catch (Exception exc)
+            {
+                return BadRequest(exc.Message);
+            }
+        }
+------------------------------------------------------------------------
+  public async Task NewUserRegisteredAsync(User user)
+        {
+            var notificationData = new MessageNotificationData("New user registered.");
+
+            notificationData["userName"] = user.UserName;
+            notificationData["email"] = user.Email;
+
+            // Publish to all subscribed users
+            await _notificationPublisher.PublishAsync(NotificationDefinitions.Names.NewUserRegistered, notificationData);
+        }
+
+        public async Task SendMessageAsync(NotificationType notificationType, NotificationObject data, long siteId = 0)
+        {
+            try
+            {
+                List<long> lstOfUserIds = new List<long>();
+                if (notificationType == NotificationType.PushNotification)
+                {
+                    data.UserId = await _pushNotification.SendPushNotification(data);
+
+                }
+                else if (notificationType == NotificationType.SMS)
+                {
+                    foreach (string value in data.SendValue)
+                    {
+                        var smsProvider = data.SMSProvider != null ? data.SMSProvider : SMSProviders.SMSMashastra;
+                        await _smsSender.SendSmsAsync(smsProvider.Value, value, data.MessageBody, siteId);
+                        User user = await _userManager.Users.Where(x => x.PhoneNumber.Contains(value)).FirstOrDefaultAsync();
+                        if (user != null)
+                        {
+                            lstOfUserIds.Add(user.Id);
+                        }
+                        else
+                        {
+                            lstOfUserIds.Add(_workContext.GetCurrentUser().Result.Id);
+                        }
+
+                    }
+                    data.UserId = lstOfUserIds.ToArray();
+                }
+                else if (notificationType == NotificationType.Email)
+                {
+                    var isHTML = true;
+                    if (data.EmailOptions != null && data.EmailOptions.Params != null)
+                    {
+                        var emailTemplateObj = await _emailTemplateService.GetEmailTemplateById(data.EmailOptions.TemplateId);
+                        if (emailTemplateObj != null)
+                        {
+
+
+                            if (data.EmailOptions.Params.Count() > 0)
+                            {
+                                foreach (var item in data.EmailOptions.Params)
+                                {
+                                    emailTemplateObj.EmailBody = emailTemplateObj.EmailBody.Replace(item.Param, item.Value);
+                                }
+
+                                data.MessageTitle = emailTemplateObj.Subject;
+                                data.MessageBody = emailTemplateObj.EmailBody;
+                                isHTML = emailTemplateObj.IsHTML;
+                            } 
+                        }
+                    }
+
+                    await _emailSender.SendEmailAsync(data.SendValue, data.EmailOptions.SenderModule, data.MessageTitle, data.MessageBody, siteId, isHTML, data.Attachment);
+                    var currentUser = await _workContext.GetCurrentUser();
+                    foreach (string item in data.SendValue)
+                    {
+                        User user = await _userManager.Users.Where(x => x.Email.Contains(item.ToLower())).FirstOrDefaultAsync();
+                        if (user != null)
+                        {
+                            lstOfUserIds.Add(user.Id);
+                        }
+                        else if (currentUser != null)
+                        {
+                            lstOfUserIds.Add(currentUser.Id);
+                        }
+                    }
+                    data.UserId = lstOfUserIds.ToArray();
+                }
+
+                await _notificationPublisher.PublishAsync(
+                      notificationType.ToString(),
+                      new MessageNotificationData(data.MessageBody, data.MessageTitle, String.Join(",", data.SendValue.Select(p => p.ToString()).ToArray())),
+                      SiteId: siteId,
+                      severity: data.Severity,
+                      userIds: data.UserId
+
+                      );
+            }
+            catch (System.Exception ex)
+            {
+                await _notificationPublisher.PublishAsync(
+                    notificationType.ToString(),
+                      new MessageNotificationData(data.MessageBody, data.MessageTitle, ex.Message.ToString()),
+                    SiteId: siteId,
+                    severity: NotificationSeverity.Error,
+                    userIds: data.UserId
+
+                    );
+
+                throw ex;
+            }
+        }
+-----------------------------------------------
+ public async Task<long[]> SendPushNotification(NotificationObject data)
+        {
+            var listOfUsers = new List<long>();
+            try
+            {
+                var message = new Message();
+
+                if (data.PushNotificationOptions.Topic == FireBaseTopics.NoTopic)
+                {
+                    foreach (string item in data.SendValue)
+                    {
+                        User user = new User();
+                        switch (data.SendVia)
+                        {
+                            case SendBy.MobileNumber:
+                                user = await _userManager.Users.Where(x => x.PhoneNumber.Contains(item)).FirstOrDefaultAsync();
+                                break;
+                            case SendBy.Email:
+                                user = await _userManager.Users.Where(x => x.Email.Contains(item)).FirstOrDefaultAsync();
+                                break;
+                            case SendBy.Username:
+                                user = await _userManager.Users.Where(x => x.UserName.ToUpper().Contains(item.ToUpper())).FirstOrDefaultAsync();
+                                break;
+                            case SendBy.UserId:
+                                user = await _userManager.Users.Where(x => x.Id.ToString() == item).FirstOrDefaultAsync();
+                                break;
+                            default:
+                                break;
+                        }
+
+                        switch (data.PushNotificationOptions.DesitinationType)
+                        {
+                            case DesitinationType.Android:
+                                message = new Message()
+                                {
+
+                                    Token = user.DeviceToken,
+                                    Android = new AndroidConfig()
+                                    {
+                                        Notification = new AndroidNotification()
+                                        {
+
+                                            Title = data.MessageTitle,
+                                            Body = data.MessageBody
+
+                                        }
+                                    }
+                                };
+                                break;
+                            case DesitinationType.IOS:
+                                message = new Message()
+                                {
+                                    Token = user.DeviceToken,
+
+                                    Apns = new ApnsConfig()
+                                    {
+                                        Aps = new Aps()
+                                        {
+                                            Alert = new ApsAlert()
+                                            {
+                                                Title = data.MessageTitle,
+                                                Body = data.MessageBody,
+                                            }
+                                        }
+                                    }
+                                };
+                                break;
+                            case DesitinationType.Personal:
+                                message = new Message()
+                                {
+                                    Token = user.DeviceToken,
+                                    Notification = new Notification()
+                                    {
+                                        Title = data.MessageTitle,
+                                        Body = data.MessageBody,
+                                    }
+                                };
+                                break;
+
+                            default:
+                                message = new Message()
+                                {
+                                    Token = user.DeviceToken,
+                                    Notification = new Notification()
+                                    {
+                                        Title = data.MessageTitle,
+                                        Body = data.MessageBody,
+                                    }
+                                };
+                                break;
+                        }
+                        listOfUsers.Add(user.Id);
+                    }
+                }
+                else
+                {
+                    var userGroup = _userGroupUserrepository.Query().Include(x => x.Users)
+                      .Where(x => Convert.ToInt32(x.FireBaseTopic) == Convert.ToInt32(data.PushNotificationOptions.Topic))
+                      .FirstOrDefault();
+
+                    if (userGroup != null)
+                    {
+                        listOfUsers = userGroup.Users.Select(x => x.UserId).ToList();
+
+                      message = new Message()
+                      {
+                          Topic = data.PushNotificationOptions.Topic.ToString(),
+                          Notification = new Notification()
+                          {
+                              Title = data.MessageTitle,
+                              Body = data.MessageBody,
+                          }
+                      };
+                    }
+                }
+
+                // Send a message to devices subscribed to the combination of topics
+                // specified by the provided condition.
+
+                var messaging = FirebaseMessaging.DefaultInstance;
+                var result = await messaging.SendAsync(message);
+                return listOfUsers.ToArray();
+            }
+            catch (Exception exc)
+            {
+
+
+
+                throw exc;
+            }
+        }
+----------------------------------------------
+   public async Task SendSmsAsync(SMSProviders SMSProvider, string PhoneNumber, string Message, long SiteId, string AdditionInfo = "")
+        {
+            try
+            {
+                switch (SMSProvider)
+                {
+                    case SMSProviders.SMSZainJordan:
+                        await ZainSendSmsAsync(PhoneNumber, AdditionInfo);
+                        break;
+                    case SMSProviders.SMSGlobal:
+                        await GlobalSMSSendSMSAsync(PhoneNumber, Message, SiteId);
+                        break;
+                    case SMSProviders.SMSUniFonic:
+                        await SendSmsUniFonicAsync(PhoneNumber, Message, SiteId);
+                        break;
+                    case SMSProviders.SMSVision:
+                        await SMSVisionSendSmsAsync(PhoneNumber, Message, SiteId);
+                        break;
+                    default:
+                        break;
+                }
+
+
+
+            }
+            catch (Exception exc)
+            {
+                throw exc;
+            }
+        }
+----------------------------------------------------------
+        public async Task<EmailTemplateVM> GetEmailTemplateById(string Id)
+        {
+            try
+            {
+                var template = await _emailtemplatesRepository.Query().Where(x => x.Id == Id).Select(x => new EmailTemplateVM
+                {
+                    Id = x.Id,
+                    CultureId = x.CultureId,
+                    EmailTemplateTypeId = x.EmailTemplateTypeId,
+                    IsHTML = x.IsHTML,
+                    SiteId = x.SiteId,
+                    Subject = x.Subject,
+                    EmailBody = x.EmailBody
+
+
+                }).FirstOrDefaultAsync();
+                return template;
+            }
+            catch (Exception exc)
+            {
+
+                throw exc;
+            }
+        }
+-------------------------------------------------\ 
+     public async Task SendEmailAsync(List<string> Emails,string SenderModule, string subject, string body, long SiteId, bool isHtml = true, List<FileViewModel> attachment = null)
+        {
+            try
+            {
+                //  SenderModule ==> The SMTP account for the same website, since some sites may have two different account to send emails
+
+                var _emailConfig = SiteId != 0 ? await _siteSettingsService.GetEmailSmtpSettings(SiteId, SenderModule) : await _siteSettingsService.GetAdminEmailSmtpSettings();
+
+
+                var message = new MimeMessage();
+                var builder = new BodyBuilder();
+                message.From.Add(new MailboxAddress(_emailConfig.SenderEmail, _emailConfig.SenderEmail));
+                foreach (var Email in Emails)
+                {
+                    message.To.Add(new MailboxAddress(Email, Email));
+                }
+
+                message.Subject = subject;
+
+                var textFormat = isHtml ? TextFormat.Html : TextFormat.Plain;
+                message.Body = new TextPart(textFormat)
+                {
+                    Text = body
+                };
+                if (attachment != null)
+                {
+                    foreach (var item in attachment)
+                    {
+                        var File = System.IO.Path.Combine(Directory.GetCurrentDirectory().Trim(), item.publicUrl, item.fileName);
+                        builder.Attachments.Add(File);
+                    }
+                }
+
+                if (isHtml)
+                {
+                    builder.HtmlBody = body;
+                }
+                else
+                    builder.TextBody = body;
+
+                message.Body = builder.ToMessageBody();
+
+                using (var client = new SmtpClient())
+                {
+                    // Accept all SSL certificates (in case the server supports STARTTLS)
+                    client.ServerCertificateValidationCallback = (s, c, h, e) => true;
+                    await client.ConnectAsync(_emailConfig.SmtpServer, _emailConfig.SmtpPort, SecureSocketOptions.Auto);
+
+                    // Note: since we don't have an OAuth2 token, disable
+                    // the XOAUTH2 authentication mechanism.
+                    client.AuthenticationMechanisms.Remove("XOAUTH2");
+
+                    if (_emailConfig.RequiresAuthentication)
+                        await client.AuthenticateAsync(_emailConfig.SmtpUsername, _emailConfig.SmtpPassword);
+
+
+                    await client.SendAsync(message);
+                    await client.DisconnectAsync(true);
+
+                    for (int i = 0; i < Emails.Count; i++)
+
+                    {
+                        await _dcmsLogService.AddInfo(_assembly, "Email has been sent", "To : " + Emails[i].ToString(), null);
+                    }
+
+
+                }
+            }
+            catch (Exception exc)
+            {
+
+                await _dcmsLogService.AddError(_assembly, exc.Message, "Email sending failure", exc.Message, null);
+                throw exc;
+            }
+        }
+---------------------------------------------------
+       public async Task<EmailConfig> GetEmailSmtpSettings(long SiteId,string SenderModule)
+        {
+            if (string.IsNullOrEmpty(SenderModule))
+                SenderModule = "EmailSenderSmpt";
+            var Settings = await _siteSettingsRepository.Query().Where(x => x.SiteId == SiteId && x.Module == SenderModule).ToListAsync();
+
+            if (Settings.Count() > 0)
+            {
+
+                EmailConfig objconfig = new EmailConfig();
+
+                objconfig.RequiresAuthentication = Convert.ToBoolean(Settings.Find(x => x.Id == "SmtpRequiresAuthentication").Value);
+                objconfig.SmtpPassword = Settings.Find(x => x.Id == "SmtpPassword").Value;
+                objconfig.SmtpPort = Convert.ToInt32(Settings.Find(x => x.Id == "SmtpPort").Value);
+                objconfig.SmtpServer = Settings.Find(x => x.Id == "SmtpServer").Value;
+                objconfig.SmtpUsername = Settings.Find(x => x.Id == "SmtpUsername").Value;
+                objconfig.SenderEmail = Settings.Find(x => x.Id == "SmtpSenderEmail").Value;
+                return objconfig;
+
+            }
+            else
+            {
+                throw new Exception("Error in Site Email Settings");
+            }
+
+        }
+---------------------------------------
+ public virtual async Task PublishAsync(
+            string notificationName,
+            NotificationData data = null,
+            EntityIdentifier entityIdentifier = null,
+             long SiteId = 0,
+            NotificationSeverity severity = NotificationSeverity.Info,
+            long[] userIds = null,
+            long[] excludedUserIds = null)
+        {
+            if (notificationName.IsNullOrEmpty())
+            {
+                throw new ArgumentException("NotificationName can not be null or whitespace!", nameof(notificationName));
+            }
+            //if (userIds != null && userIds.Length > 0)
+            //{
+
+            var CurrentUserId = await _workContext.GetCurrentUserId();
+            var notificationScheme = new NotificationScheme()
+            {
+                NotificationName = notificationName,
+                EntityTypeName = entityIdentifier?.Type.FullName,
+                EntityTypeAssemblyQualifiedName = entityIdentifier?.Type.AssemblyQualifiedName,
+                EntityId = entityIdentifier?.Id.ToJsonString(),
+                SiteId = SiteId,
+                Severity = severity,
+                UserIds = (userIds == null || userIds.Length <= 0) ? CurrentUserId.ToString() : string.Join(",", userIds),
+                ExcludedUserIds = (excludedUserIds == null || excludedUserIds.Length <= 0) ? "" : string.Join(",", excludedUserIds),
+                Data = data?.ToJsonString(),
+                DataTypeName = data?.GetType().AssemblyQualifiedName,
+                CreatedById = (userIds == null || userIds.Length <= 0) ? CurrentUserId : userIds[0]
+
+            };
+
+            await _notificationRepository.InsertNotificationSchemeAsync(notificationScheme);
+                await _notificationRepository.SaveChangesAsync(); //To get Id of the notification
+
+                //if (userIds != null && userIds.Length <= MaxUserCountToDirectlyDistributeANotification)
+
+                //We can directly distribute the notification since there are not much receivers
+                await _notificationDistributer.DistributeAsync(notificationScheme.Id);
+                //}
+                //else
+                //{
+                //    //We enqueue a background job since distributing may get a long time
+                //    await _backgroundJobManager.EnqueueAsync(new NotificationDistributionJobArgs(notificationScheme.Id));
+                //}
+            //}
+            //else
+            //{
+            //    throw new Exception("No users with the provided informations were found to send the message to!");
+            //}
+        }
+    }
+--------------------------
+   public virtual Task InsertNotificationSchemeAsync(NotificationScheme notification)
+        {
+            _notificationSchemeRepository.Add(notification);
+            return Task.CompletedTask;
+        }
+-----------------------
+ public async Task DistributeAsync(long notificationId)
+        {
+            var notificationScheme = await _notificationRepository.GetNotificationSchemeOrNullAsync(notificationId);
+            if (notificationScheme == null)
+            {
+                Logger.LogWarning("NotificationDistributionJob can not continue since could not found notification by id: " + notificationId);
+                return;
+            }
+
+            var userIds = await GetUserIds(notificationScheme);
+
+            var userNotifications = await SaveUserNotifications(userIds, notificationScheme);
+
+            await _notificationRepository.DeleteNotificationAsync(notificationScheme);
+            await _notificationRepository.SaveChangesAsync();
+            try
+            {
+                await _realTimeNotifier.SendNotificationsAsync(userNotifications.ToArray());
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex.ToString(), ex);
+            }
+        }
+---------------------
+ public virtual async Task<NotificationScheme> GetNotificationSchemeOrNullAsync(long notificationId)
+        {
+            return await _notificationSchemeRepository.Query().FirstOrDefaultAsync(s => !s.IsDeleted && s.Id == notificationId);
+        }
+
+----------------------
+  protected virtual async Task<List<UserNotificationDto>> SaveUserNotifications(long[] userIds, NotificationScheme notificationScheme)
+        {
+            var userNotificationDtos = new List<UserNotificationDto>();
+            var notificationDetail = new NotificationDetail(notificationScheme);
+            notificationDetail.NotificationSchemeId = notificationScheme.Id;
+            notificationDetail.CreatedById = notificationScheme.CreatedById;
+            await _notificationRepository.InsertNotificationDetailAsync(notificationDetail);
+            await _notificationRepository.SaveChangesAsync(); //To get notificationDetail.Id.
+
+            var notificationDetailDto = notificationDetail.ToNotificationDetailDto();
+
+            foreach (var userId in userIds)
+            {
+                var userNotification = new UserNotification()
+                {
+                    UserId = userId,
+                    NotificationDetailId = notificationDetail.Id
+                };
+
+                await _notificationRepository.InsertUserNotificationAsync(userNotification);
+
+                userNotificationDtos.Add(userNotification.ToUserNotificationDto(notificationDetailDto));
+            }
+            await _notificationRepository.SaveChangesAsync();
+
+            return userNotificationDtos;
+        }
+    }
+-----------------------------
+public static NotificationDetailDto ToNotificationDetailDto(this NotificationDetail notificationDetail)
+        {
+            var entityType = string.IsNullOrEmpty(notificationDetail.EntityTypeAssemblyQualifiedName)
+                ? null
+                : Type.GetType(notificationDetail.EntityTypeAssemblyQualifiedName);
+
+            return new NotificationDetailDto
+            {
+                Id = notificationDetail.Id,
+                NotificationName = notificationDetail.NotificationName,
+                Data = string.IsNullOrEmpty(notificationDetail.Data) ? null : JsonConvert.DeserializeObject(notificationDetail.Data, Type.GetType(notificationDetail.DataTypeName)) as NotificationData,
+                EntityTypeName = notificationDetail.EntityTypeName,
+                EntityType = entityType,
+                EntityId = string.IsNullOrEmpty(notificationDetail.EntityId) ? null : JsonConvert.DeserializeObject(notificationDetail.EntityId, EntityHelper.GetPrimaryKeyType(entityType)),
+                Severity = notificationDetail.Severity,
+                CreatedOn = notificationDetail.CreatedOn
+            };
+        }
+    }
+-------------------
+ public virtual Task InsertUserNotificationAsync(UserNotification userNotification)
+        {
+            _userNotificationRepository.Add(userNotification);
+            return Task.CompletedTask;
+        }
+----------------------------
+ public static UserNotificationDto ToUserNotificationDto(this UserNotification userNotification, NotificationDetailDto notificationDetailDto)
+        {
+            return new UserNotificationDto
+            {
+                Id = userNotification.Id,
+                Detail = notificationDetailDto,
+                UserId = userNotification.UserId,
+                State = userNotification.State,
+            };
+        }
+
+
+
+--------------------------
+ public Task SendNotificationsAsync(UserNotificationDto[] userNotifications)
+        {
+            foreach (var userNotification in userNotifications)
+            {
+                try
+                {
+                    var onlineClients = _onlineClientManager.GetAllByUserId(userNotification.UserId);
+                    foreach (var onlineClient in onlineClients)
+                    {
+                        var signalRClient = _hubContext.Clients.Client(onlineClient.ConnectionId);
+                        if (signalRClient == null)
+                        {
+                            Logger.LogDebug($"Can not get user {userNotification.UserId} with connectionId {onlineClient.ConnectionId} from SignalR hub!");
+                            continue;
+                        }
+
+                        signalRClient.SendAsync("getNotification", userNotification);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning($"Could not send notification to user: {userNotification.UserId}.");
+                    Logger.LogWarning(ex.ToString(), ex);
+                }
+            }
+
+            return Task.FromResult(0);
+        }
+    }

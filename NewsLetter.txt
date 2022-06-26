@@ -1,0 +1,281 @@
+  private readonly IWorkContext _workContext;
+        private readonly IRepository<NewsLetters> _newsLettersRepo;
+        private readonly IRepository<NewsLetterSubscribers> _newsLetterSubscribersRepo;
+        private readonly IRepository<NewsLetterMedias> _newsLetterMediasRepo;
+        public readonly IRepository<CustomerGroup> _customerGroup;
+        private readonly EskaDCMSDbContext _context;
+        public readonly IMediaService _mediaService;
+
+        public NewsLetterService(IWorkContext workContext,
+            IRepository<NewsLetters> newsLettersRepo,
+            IRepository<NewsLetterSubscribers> newsLetterSubscribersRepo,
+            IMediaService mediaService,
+            EskaDCMSDbContext context,
+            IRepository<NewsLetterMedias> newsLetterMediasRepo,
+            IRepository<CustomerGroup> customerGroup)
+        {   _workContext = workContext;
+            _newsLettersRepo = newsLettersRepo;
+            _newsLetterSubscribersRepo = newsLetterSubscribersRepo;
+            _mediaService = mediaService;
+            _newsLetterMediasRepo = newsLetterMediasRepo;
+            _customerGroup = customerGroup;
+        }
+        public async Task<List<UserNewsLetterVm>> GetNewsLetterUsersAsync(long Id)
+        {
+            try
+            {
+
+                var Users = await _newsLetterSubscribersRepo
+                                                         .Query()
+                                                         .Where(x => x.NewsLetterId == Id)
+                                                         .Include(x => x.UsersGroup)
+                                                         .ThenInclude(x => x.Users)
+                                                         .Select(x => x.UsersGroup.Users)
+                                                         .Select(x => new UserNewsLetterVm
+                                                         {
+                                                             UsersNewsLetter = x.Select(y => new UsersNewsLetter
+                                                             {
+                                                                 Id=y.User.Id,
+                                                                 UserName = y.User.UserName,
+                                                                 Email = y.User.Email
+                                                             }).ToList()
+
+                                                         })
+                                                         .ToListAsync();
+
+
+                return Users;
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+        public async Task<List<NewsLetterResponseVm>> UpsertNewsLetterAsync(RequestNewsLetterVm newsLetter)
+        {
+            using (var transaction = _context.Database.BeginTransaction())
+            {
+
+                try
+                {  // NOTE!! any api with files must be formdata
+                    long UserId = await _workContext.GetCurrentUserId();
+
+                    long SiteId = _workContext.GetCurrentSiteId();
+
+                    bool IsEditMood = newsLetter.Id != 0;
+
+                    var newsLetters = new NewsLetters();
+
+                    if (IsEditMood)
+                    {
+                        newsLetters = await _newsLettersRepo
+                                      .Query()
+                                      .Where(m => m.Id == newsLetter.Id && m.SiteId == SiteId)
+                                      .FirstOrDefaultAsync();
+                        if (newsLetters == null)
+                        {
+                            throw new Exception("Not Found NewsLetter");
+                        }
+
+                        newsLetters.Description = newsLetter.Description;
+                        //  newsLetters.AttacheFile = Model.AttacheFile; upload media then save ids 
+
+                        newsLetters.SentDate = newsLetter.SentDate;
+
+                        newsLetters.Subject = newsLetter.Subject;
+
+                        newsLetters.ModifiedById = UserId;
+                        newsLetters.ModificationDate = DateTimeOffset.Now;
+                        // modified by & date
+                    }
+                    else
+                    {
+                        newsLetters.CreatedById = UserId;
+                        newsLetters.CreationDate = DateTimeOffset.Now;
+                    }
+
+
+                    newsLetters.Description = newsLetter.Description;
+
+                    newsLetters.SenderEmail = newsLetter.SenderEmail;
+
+                    newsLetters.SentDate = newsLetter.SentDate;
+
+                    newsLetters.emailTemplatesId = newsLetter.EmailTemplateId;
+
+                    newsLetters.Subject = newsLetter.Subject;
+
+                    newsLetters.StatusType = newsLetter.StatusType;
+
+                    newsLetters.Status = newsLetter.Status;
+
+                    newsLetters.SiteId = SiteId;
+
+                    newsLetters.NotificationNewsLetter = newsLetter.NotificationNewsLetter;
+
+                    newsLetters.NewsLetterBody = newsLetter.NewsLetterBody;
+
+
+                    if (!IsEditMood)
+                    {
+                        _newsLettersRepo.Add(newsLetters);
+
+                    }
+
+
+                    await _newsLettersRepo.SaveChangesAsync();
+
+                    IList<NewsLetterSubscribers> newsLetterSubscribers = new List<NewsLetterSubscribers>();
+
+                    foreach (var CustomerGroupId in newsLetter.NewsLetterSubscribers)
+                    {
+                        newsLetterSubscribers.Add(new NewsLetterSubscribers { NewsLetterId = newsLetters.Id, UsersGroupId = CustomerGroupId });
+                    }
+
+
+                    IList<NewsLetterMedias> newsLetterMedias = new List<NewsLetterMedias>();
+
+                    foreach (var Id in newsLetter.UploadIds)
+                    {
+                        newsLetterMedias.Add(new NewsLetterMedias() { NewsLetterId = newsLetters.Id, MediaId = Id });
+
+                    }
+
+                    _newsLetterMediasRepo.AddRange(newsLetterMedias);
+
+                    await _newsLetterSubscribersRepo.SaveChangesAsync();
+
+                    if (newsLetters.StatusType == NewsLetterType.Sent)
+                    {
+
+                    }
+
+                    transaction.Commit();
+                    return await GetNewsLetterAsync(SiteId);
+                }
+
+                catch (Exception e)
+                {
+                    transaction.Rollback();
+                    throw e;
+                }
+            }
+        }
+        public async Task<List<UsersGroupName>> GetUsersForNewsLetterAsync()
+        {
+            try
+            {
+                var SiteId = _workContext.GetCurrentSiteId();
+                var Users = await _customerGroup
+                    .Query()
+                    .Include(x => x.Users)
+                    .Where(x => x.SiteId == SiteId)
+                    .Select(x => new UsersGroupName
+                    {
+                        GroupName=x.Name,
+                        UsersNewsLetter = x.Users.Select(y => new UsersNewsLetter
+                        {
+                            Id=y.User.Id,
+                            UserName = y.User.UserName,
+                            Email = y.User.Email
+                        }).ToList()
+
+                    }).ToListAsync();
+
+                return Users;
+
+
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+        public async Task<List<NewsLetterResponseVm>> GetNewsLetterAsync(long SiteId)
+        {
+            var newsLetterResponse = _newsLettersRepo.Query()
+                                                    .Include(x => x.SentTo)
+                                                    .ThenInclude(x=>x.UsersGroup)
+                                                    .Where(x => x.SiteId == SiteId&&x.Status!=EStatus.Deleted)
+                                                    .Select(x => new NewsLetterResponseVm
+                                                    {
+                                                        Id = x.Id,
+                                                        Name = x.Name,
+                                                        NotificationType = x.NotificationNewsLetter,
+                                                        SendTo = x.SentTo
+                                                                 .Where(x => x.NewsLetterId == x.NewsLetter.Id 
+                                                                 && SiteId == x.NewsLetter.SiteId)
+                                                                 .Select(x=>x.UsersGroup.Users.Select(x=>x.User))
+                                                                 .Count(),
+                                                        SendDate = x.SentDate,
+                                                        StatusType = x.StatusType
+                                                    }).ToListAsync();
+
+            return await newsLetterResponse;
+
+
+        }
+        public async Task SendNewsLetterByBackgroundServicesAsync(NewsLetters newsLetters)
+        {
+            try
+            {
+                //Will Send Data By BackGroundDervices
+
+
+
+
+
+                //
+                await EditStatusNewsLetterTypeAsync(newsLetters.Id, newsLetters.SiteId);
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+        public async Task DeleteAsync(long id)
+        {
+            try
+            {
+                var SiteId = _workContext.GetCurrentSiteId();
+          
+                var newsLetter = _newsLettersRepo
+                                             .Query()
+                                             .Where(x => x.Id == id
+                                              && SiteId == x.SiteId)
+                                             .FirstOrDefault();
+
+                if (newsLetter != null)
+                {
+                    newsLetter.Status = EStatus.Deleted;
+                
+                }
+                await _newsLettersRepo.SaveChangesAsync();
+
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+        private async Task EditStatusNewsLetterTypeAsync(long? Id, long? SiteId)
+        {
+            try
+            {
+                var query = await _newsLettersRepo.Query().Where(x => x.Id == Id && x.SiteId == SiteId).FirstOrDefaultAsync();
+                if (query == null)
+                {
+                    throw new Exception("Not Found This NewsLetter");
+                }
+                query.StatusType = NewsLetterType.Sent;
+
+                await _newsLettersRepo.SaveChangesAsync();
+
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+
+       

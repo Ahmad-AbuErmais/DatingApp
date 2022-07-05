@@ -1,0 +1,38 @@
+        private bool ShouldExecute(NewsLetters NewsLetter, CancellationToken stoppingToken)
+        {
+            try
+            {
+                bool Result = false;
+
+                if (!stoppingToken.IsCancellationRequested)
+                {
+                    var CurrentDate = DateTime.Now;
+                    DateTime Sent;
+                    if (NewsLetter.LastSentDate is not null)
+                    {
+                        Sent = NewsLetter.LastSentDate ?? DateTime.Now;
+                    }
+                    else
+                    {
+                        Sent = NewsLetter.SentDate ?? DateTime.Now;
+                    }
+
+
+
+                    var CompareSentDate = CurrentDate.Date.CompareTo(NewsLetter.SentDate.Value.Date);
+                    bool LastDateIsNull = NewsLetter.LastSentDate == null;
+
+                    switch (NewsLetter.sendTimer)
+                    {
+                        case ESendTimer.OneTime: Result = CompareSentDate > 0 && LastDateIsNull ? true : false; break;
+                        case ESendTimer.Daily: Result = CompareSentDate > 0 && (LastDateIsNull || CurrentDate.CompareTo(NewsLetter.LastSentDate.Value.AddDays(1)) > 0) ? true : false; break;
+                        case ESendTimer.Weekly: Result = CompareSentDate > 0 && (LastDateIsNull || CurrentDate.CompareTo(NewsLetter.LastSentDate.Value.AddDays(7)) > 0) ? true : false; break;
+                        case ESendTimer.Monthly: Result = CompareSentDate > 0 && (LastDateIsNull || CurrentDate.CompareTo(NewsLetter.LastSentDate.Value.AddMonths(1)) > 0) ? true : false; break;
+                        case ESendTimer.Yearly: Result = CompareSentDate > 0 && (LastDateIsNull || CurrentDate.CompareTo(NewsLetter.LastSentDate.Value.AddYears(1)) > 0) ? true : false; break;
+                        default: Result = false; break;
+                    }
+
+                }
+                return Result;
+
+            }
